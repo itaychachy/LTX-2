@@ -248,6 +248,47 @@ def default_2_stage_arg_parser() -> argparse.ArgumentParser:
             "of the generated video in the latent space."
         ),
     )
+    # YARN scaling parameters for video RoPE extrapolation (second stage only in two-stage pipelines)
+    parser.add_argument(
+        "--video-yarn-betas",
+        type=float,
+        nargs=3,
+        metavar=("T", "Y", "X"),
+        default=None,
+        help=(
+            "YARN beta scaling factors for video RoPE, one per positional axis: "
+            "frames (t), height (y), width (x). Controls the frequency scaling ratio. "
+            "Values > 1.0 compress frequencies for extrapolation. "
+            "In two-stage pipelines, YARN is applied only to the second stage "
+            "(higher resolution, after upsampling). Example: 1.0 1.8 1.8. "
+            "YARN is approximated using a sigmoid function for smoother transition; "
+            "other parameters control the approximation."
+        ),
+    )
+    parser.add_argument(
+        "--video-yarn-temperatures",
+        type=float,
+        nargs=3,
+        metavar=("T", "Y", "X"),
+        default=None,
+        help=(
+            "YARN temperature values for video RoPE, one per positional axis: "
+            "frames (t), height (y), width (x). Controls sigmoid transition sharpness. "
+            "In two-stage pipelines, applied only to the second stage. Example: 1.0 1.0 1.0"
+        ),
+    )
+    parser.add_argument(
+        "--video-yarn-shifts",
+        type=float,
+        nargs=3,
+        metavar=("T", "Y", "X"),
+        default=None,
+        help=(
+            "YARN shift values for video RoPE, one per positional axis: "
+            "frames (t), height (y), width (x). Controls sigmoid center position. "
+            "In two-stage pipelines, applied only to the second stage. Example: 0.0 -30.0 -30.0"
+        ),
+    )
     return parser
 
 

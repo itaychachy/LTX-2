@@ -14,6 +14,7 @@ from ltx_core.model.transformer.transformer_args import (
     TransformerArgs,
     TransformerArgsPreprocessor,
 )
+from ltx_core.types import YARNConfig
 from ltx_core.utils import to_denoised
 
 
@@ -50,6 +51,7 @@ class LTXModel(torch.nn.Module):
         caption_channels: int = 3840,
         positional_embedding_theta: float = 10000.0,
         positional_embedding_max_pos: list[int] | None = None,
+        yarn_config: YARNConfig | None = None,
         timestep_scale_multiplier: int = 1000,
         use_middle_indices_grid: bool = True,
         audio_num_attention_heads: int = 32,
@@ -70,6 +72,7 @@ class LTXModel(torch.nn.Module):
         self.timestep_scale_multiplier = timestep_scale_multiplier
         self.positional_embedding_theta = positional_embedding_theta
         self.model_type = model_type
+        self.yarn_config = yarn_config
         cross_pe_max_pos = None
         if model_type.is_video_enabled():
             if positional_embedding_max_pos is None:
@@ -215,6 +218,7 @@ class LTXModel(torch.nn.Module):
                 positional_embedding_theta=self.positional_embedding_theta,
                 rope_type=self.rope_type,
                 av_ca_timestep_scale_multiplier=self.av_ca_timestep_scale_multiplier,
+                yarn_config=self.yarn_config,
             )
             self.audio_args_preprocessor = MultiModalTransformerArgsPreprocessor(
                 patchify_proj=self.audio_patchify_proj,
@@ -247,6 +251,7 @@ class LTXModel(torch.nn.Module):
                 double_precision_rope=self.double_precision_rope,
                 positional_embedding_theta=self.positional_embedding_theta,
                 rope_type=self.rope_type,
+                yarn_config=self.yarn_config,
             )
         elif self.model_type.is_audio_enabled():
             self.audio_args_preprocessor = TransformerArgsPreprocessor(

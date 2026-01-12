@@ -7,7 +7,17 @@ from ltx_core.model.model_protocol import ModelConfigurator
 from ltx_core.model.transformer.attention import AttentionFunction
 from ltx_core.model.transformer.model import LTXModel, LTXModelType
 from ltx_core.model.transformer.rope import LTXRopeType
+from ltx_core.types import YARNConfig
 from ltx_core.utils import check_config_value
+
+
+def extract_yarn_config(config: dict) -> YARNConfig | None:
+    betas = config.get("yarn_betas")
+    temperatures = config.get("yarn_temperatures")
+    shifts = config.get("yarn_shifts")
+    if betas is not None and temperatures is not None and shifts is not None:
+        return YARNConfig(betas=betas, temperatures=temperatures, shifts=shifts)
+    return None
 
 
 class LTXModelConfigurator(ModelConfigurator[LTXModel]):
@@ -18,6 +28,7 @@ class LTXModelConfigurator(ModelConfigurator[LTXModel]):
 
     @classmethod
     def from_config(cls: type[LTXModel], config: dict) -> LTXModel:
+        yarn_config = extract_yarn_config(config)
         config = config.get("transformer", {})
 
         check_config_value(config, "dropout", 0.0)
@@ -63,6 +74,7 @@ class LTXModelConfigurator(ModelConfigurator[LTXModel]):
             av_ca_timestep_scale_multiplier=config.get("av_ca_timestep_scale_multiplier", 1),
             rope_type=LTXRopeType(config.get("rope_type", "interleaved")),
             double_precision_rope=config.get("frequencies_precision", False) == "float64",
+            yarn_config=yarn_config,
         )
 
 
@@ -74,6 +86,7 @@ class LTXVideoOnlyModelConfigurator(ModelConfigurator[LTXModel]):
 
     @classmethod
     def from_config(cls: type[LTXModel], config: dict) -> LTXModel:
+        yarn_config = extract_yarn_config(config)
         config = config.get("transformer", {})
 
         check_config_value(config, "dropout", 0.0)
@@ -109,6 +122,7 @@ class LTXVideoOnlyModelConfigurator(ModelConfigurator[LTXModel]):
             use_middle_indices_grid=config.get("use_middle_indices_grid", True),
             rope_type=LTXRopeType(config.get("rope_type", "interleaved")),
             double_precision_rope=config.get("frequencies_precision", False) == "float64",
+            yarn_config=yarn_config,
         )
 
 

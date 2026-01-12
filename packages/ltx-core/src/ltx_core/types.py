@@ -179,3 +179,49 @@ class LatentState:
             positions=self.positions.clone(),
             clean_latent=self.clean_latent.clone(),
         )
+
+
+@dataclass(frozen=True)
+class YARNConfig:
+    """Configuration for YARN (Yet Another RoPE extrapolatioN)-proxy scaling.
+
+    Each tuple has one value per positional dimension.
+    For video: (t, y, x) corresponding to frames, height, width.
+
+    All three parameters must be provided together with matching lengths,
+    corresponding to the number of dimensions (3 for video).
+    """
+
+    betas: tuple[float, ...]
+    temperatures: tuple[float, ...]
+    shifts: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        # All must have the same length
+        if not (len(self.betas) == len(self.temperatures) == len(self.shifts)):
+            raise ValueError(
+                f"YARN config parameters must have matching lengths. "
+                f"Got betas={len(self.betas)}, temperatures={len(self.temperatures)}, "
+                f"shifts={len(self.shifts)}"
+            )
+
+    @classmethod
+    def from_optional(
+        cls,
+        betas: tuple[float, ...] | None,
+        temperatures: tuple[float, ...] | None,
+        shifts: tuple[float, ...] | None,
+    ) -> "YARNConfig | None":
+        """Create YARNConfig from optional parameters.
+
+        Returns None if all params are None, raises ValueError if only some are provided.
+        """
+        params = [betas, temperatures, shifts]
+        if all(p is None for p in params):
+            return None
+        if any(p is None for p in params):
+            raise ValueError(
+                "YARN config requires all parameters (betas, temperatures, shifts) "
+                "to be provided together, or none at all."
+            )
+        return cls(betas=betas, temperatures=temperatures, shifts=shifts)

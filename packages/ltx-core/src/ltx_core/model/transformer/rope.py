@@ -2,10 +2,13 @@ import functools
 import math
 from enum import Enum
 from typing import Callable, Tuple
+import logging
 
 import numpy as np
 import torch
 from einops import rearrange
+
+from ltx_core.types import YARNConfig
 
 
 class LTXRopeType(Enum):
@@ -66,9 +69,42 @@ def apply_split_rotary_emb(
     return output
 
 
+def scale_if_needed_np(pow_indices: np.ndarray, yarn_betas: list[float], yarn_temperatures: list[float], yarn_shifts: list[float]) -> np.ndarray:
+    if not yarn_betas:
+        return pow_indices
+
+    original_dtype = pow_indices.dtype
+    D = pow_indices.shape[0]
+    d = np.arange(D)
+    mid = (D - 1) / 2.0
+
+    scaled_pow_indices = []
+    for beta, temperature, shift in zip(yarn_betas, yarn_temperatures, yarn_shifts):
+        if beta == 1.0:  # no scaling
+            scaled_pow_indices.append(pow_indices)
+            continue
+
+        # Stable sigmoid input to avoid overflow
+        x = (d - mid - shift) / temperature
+        if np.max(np.abs(x)) > 700.0:
+            # Potential overflow in exponential (float64-safe)
+            # It is sigmoid-safe, since overflow -> saturation (0/1).
+            logging.warning("Note: YaRN scaling might cause overflow with values > 700.0.")
+
+        sd = 1 / (1 + np.exp(-x))  # sigmoid
+        scaled_pow_indices.append((pow_indices / beta) * (1 - sd) + pow_indices * sd)
+
+    scaled_pow_indices = np.stack(scaled_pow_indices, axis=0)
+    assert scaled_pow_indices.dtype == original_dtype, "Scaling operation should preserve the original dtype"
+    return scaled_pow_indices
+
+
 @functools.lru_cache(maxsize=5)
 def generate_freq_grid_np(
-    positional_embedding_theta: float, positional_embedding_max_pos_count: int, inner_dim: int
+    positional_embedding_theta: float,
+    positional_embedding_max_pos_count: int,
+    inner_dim: int,
+    yarn_config: YARNConfig | None = None,
 ) -> torch.Tensor:
     theta = positional_embedding_theta
     start = 1
@@ -84,12 +120,52 @@ def generate_freq_grid_np(
             dtype=np.float64,
         ),
     )
+    if yarn_config is not None:
+        pow_indices = scale_if_needed_np(
+            pow_indices=pow_indices,
+            yarn_betas=list(yarn_config.betas),
+            yarn_temperatures=list(yarn_config.temperatures),
+            yarn_shifts=list(yarn_config.shifts),
+        )
     return torch.tensor(pow_indices * math.pi / 2, dtype=torch.float32)
+
+
+def scale_if_needed_torch(indices: torch.Tensor, yarn_betas: list[float], yarn_temperatures: list[float], yarn_shifts: list[float]) -> torch.Tensor:
+    if not yarn_betas:
+        return indices
+
+    original_dtype = indices.dtype
+    D = indices.shape[0]
+    d = torch.arange(D)
+    mid = (D - 1) / 2.0
+
+    scaled_indices = []
+    for beta, temperature, shift in zip(yarn_betas, yarn_temperatures, yarn_shifts):
+        if beta == 1.0:  # no scaling
+            scaled_indices.append(indices)
+            continue
+
+        # Stable sigmoid input to avoid overflow
+        x = (d - mid - shift) / temperature
+        if torch.max(torch.abs(x)) > 80.0:
+            # Potential overflow in exponential (float32-safe)
+            # It is sigmoid-safe, since overflow -> saturation (0/1).
+            logging.warning("Note: YaRN scaling might cause overflow with values > 80.0.")
+
+        sd = 1 / (1 + torch.exp(-x))  # sigmoid
+        scaled_indices.append((indices / beta) * (1 - sd) + indices * sd)
+    scaled_indices = torch.stack(scaled_indices, dim=0)
+
+    assert scaled_indices.dtype == original_dtype, "Scaling operation should preserve the original dtype"
+    return scaled_indices
 
 
 @functools.lru_cache(maxsize=5)
 def generate_freq_grid_pytorch(
-    positional_embedding_theta: float, positional_embedding_max_pos_count: int, inner_dim: int
+    positional_embedding_theta: float,
+    positional_embedding_max_pos_count: int,
+    inner_dim: int,
+    yarn_config: YARNConfig | None = None,
 ) -> torch.Tensor:
     theta = positional_embedding_theta
     start = 1
@@ -104,6 +180,13 @@ def generate_freq_grid_pytorch(
             dtype=torch.float32,
         )
     )
+    if yarn_config is not None:
+        indices = scale_if_needed_torch(
+            indices=indices,
+            yarn_betas=list(yarn_config.betas),
+            yarn_temperatures=list(yarn_config.temperatures),
+            yarn_shifts=list(yarn_config.shifts),
+        )
     indices = indices.to(dtype=torch.float32)
 
     indices = indices * math.pi / 2
@@ -184,12 +267,15 @@ def precompute_freqs_cis(
     use_middle_indices_grid: bool = False,
     num_attention_heads: int = 32,
     rope_type: LTXRopeType = LTXRopeType.INTERLEAVED,
-    freq_grid_generator: Callable[[float, int, int, torch.device], torch.Tensor] = generate_freq_grid_pytorch,
+    yarn_config: YARNConfig | None = None,
+    freq_grid_generator: Callable[
+        [float, int, int, YARNConfig | None], torch.Tensor
+    ] = generate_freq_grid_pytorch,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     if max_pos is None:
         max_pos = [20, 2048, 2048]
 
-    indices = freq_grid_generator(theta, indices_grid.shape[1], dim)
+    indices = freq_grid_generator(theta, indices_grid.shape[1], dim, yarn_config)
     freqs = generate_freqs(indices, indices_grid, max_pos, use_middle_indices_grid)
 
     if rope_type == LTXRopeType.SPLIT:

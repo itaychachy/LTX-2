@@ -35,6 +35,7 @@ from ltx_core.text_encoders.gemma import (
     AVGemmaTextEncoderModelConfigurator,
     module_ops_from_gemma_root,
 )
+from ltx_core.types import YARNConfig
 
 
 class ModelLedger:
@@ -93,6 +94,7 @@ class ModelLedger:
         loras: LoraPathStrengthAndSDOps | None = None,
         registry: Registry | None = None,
         fp8transformer: bool = False,
+        yarn_config: YARNConfig | None = None,
     ):
         self.dtype = dtype
         self.device = device
@@ -102,16 +104,24 @@ class ModelLedger:
         self.loras = loras or ()
         self.registry = registry or DummyRegistry()
         self.fp8transformer = fp8transformer
+        self.yarn_config = yarn_config
         self.build_model_builders()
 
     def build_model_builders(self) -> None:
         if self.checkpoint_path is not None:
+            yarn_config_overrides = {}
+            if self.yarn_config is not None:
+                yarn_config_overrides["yarn_betas"] = self.yarn_config.betas
+                yarn_config_overrides["yarn_temperatures"] = self.yarn_config.temperatures
+                yarn_config_overrides["yarn_shifts"] = self.yarn_config.shifts
+
             self.transformer_builder = Builder(
                 model_path=self.checkpoint_path,
                 model_class_configurator=LTXModelConfigurator,
                 model_sd_ops=LTXV_MODEL_COMFY_RENAMING_MAP,
                 loras=tuple(self.loras),
                 registry=self.registry,
+                config_overrides=yarn_config_overrides,
             )
 
             self.vae_decoder_builder = Builder(
@@ -164,7 +174,12 @@ class ModelLedger:
         else:
             return torch.device("cpu")
 
-    def with_loras(self, loras: LoraPathStrengthAndSDOps) -> "ModelLedger":
+    def add(
+        self,
+        loras: LoraPathStrengthAndSDOps,
+        yarn_config: YARNConfig | None = None,
+    ) -> "ModelLedger":
+        """Create a new ModelLedger with additional LoRAs and YARN configuration."""
         return ModelLedger(
             dtype=self.dtype,
             device=self.device,
@@ -174,6 +189,7 @@ class ModelLedger:
             loras=(*self.loras, *loras),
             registry=self.registry,
             fp8transformer=self.fp8transformer,
+            yarn_config=yarn_config,
         )
 
     def transformer(self) -> X0Model:

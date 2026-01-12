@@ -14,7 +14,7 @@ from ltx_core.model.upsampler import upsample_video
 from ltx_core.model.video_vae import TilingConfig, get_video_chunks_number
 from ltx_core.model.video_vae import decode_video as vae_decode_video
 from ltx_core.text_encoders.gemma import encode_text
-from ltx_core.types import LatentState, VideoPixelShape
+from ltx_core.types import LatentState, VideoPixelShape, YARNConfig
 from ltx_pipelines.utils import ModelLedger
 from ltx_pipelines.utils.args import default_2_stage_arg_parser
 from ltx_pipelines.utils.constants import (
@@ -55,6 +55,7 @@ class TI2VidTwoStagesPipeline:
         loras: list[LoraPathStrengthAndSDOps],
         device: str = device,
         fp8transformer: bool = False,
+        yarn_config: YARNConfig | None = None,
     ):
         self.device = device
         self.dtype = torch.bfloat16
@@ -68,8 +69,9 @@ class TI2VidTwoStagesPipeline:
             fp8transformer=fp8transformer,
         )
 
-        self.stage_2_model_ledger = self.stage_1_model_ledger.with_loras(
+        self.stage_2_model_ledger = self.stage_1_model_ledger.add(
             loras=distilled_lora,
+            yarn_config=yarn_config
         )
 
         self.pipeline_components = PipelineComponents(
@@ -238,6 +240,13 @@ def main() -> None:
     logging.getLogger().setLevel(logging.INFO)
     parser = default_2_stage_arg_parser()
     args = parser.parse_args()
+
+    yarn_config = YARNConfig.from_optional(
+        betas=tuple(args.video_yarn_betas) if args.video_yarn_betas else None,
+        temperatures=tuple(args.video_yarn_temperatures) if args.video_yarn_temperatures else None,
+        shifts=tuple(args.video_yarn_shifts) if args.video_yarn_shifts else None,
+    )
+
     pipeline = TI2VidTwoStagesPipeline(
         checkpoint_path=args.checkpoint_path,
         distilled_lora=args.distilled_lora,
@@ -245,6 +254,7 @@ def main() -> None:
         gemma_root=args.gemma_root,
         loras=args.lora,
         fp8transformer=args.enable_fp8,
+        yarn_config=yarn_config,
     )
     tiling_config = TilingConfig.default()
     video_chunks_number = get_video_chunks_number(args.num_frames, tiling_config)

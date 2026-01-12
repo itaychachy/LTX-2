@@ -11,6 +11,7 @@ from ltx_core.model.transformer.rope import (
     precompute_freqs_cis,
 )
 from ltx_core.model.transformer.text_projection import PixArtAlphaTextProjection
+from ltx_core.types import YARNConfig
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,7 @@ class TransformerArgsPreprocessor:
         double_precision_rope: bool,
         positional_embedding_theta: float,
         rope_type: LTXRopeType,
+        yarn_config: YARNConfig | None = None,
     ) -> None:
         self.patchify_proj = patchify_proj
         self.adaln = adaln
@@ -53,6 +55,7 @@ class TransformerArgsPreprocessor:
         self.double_precision_rope = double_precision_rope
         self.positional_embedding_theta = positional_embedding_theta
         self.rope_type = rope_type
+        self.yarn_config = yarn_config
 
     def _prepare_timestep(
         self, timestep: torch.Tensor, batch_size: int, hidden_dtype: torch.dtype
@@ -100,6 +103,7 @@ class TransformerArgsPreprocessor:
         use_middle_indices_grid: bool,
         num_attention_heads: int,
         x_dtype: torch.dtype,
+        yarn_config: YARNConfig | None = None,
     ) -> torch.Tensor:
         """Prepare positional embeddings."""
         freq_grid_generator = generate_freq_grid_np if self.double_precision_rope else generate_freq_grid_pytorch
@@ -112,6 +116,7 @@ class TransformerArgsPreprocessor:
             use_middle_indices_grid=use_middle_indices_grid,
             num_attention_heads=num_attention_heads,
             rope_type=self.rope_type,
+            yarn_config=yarn_config,
             freq_grid_generator=freq_grid_generator,
         )
         return pe
@@ -131,6 +136,7 @@ class TransformerArgsPreprocessor:
             use_middle_indices_grid=self.use_middle_indices_grid,
             num_attention_heads=self.num_attention_heads,
             x_dtype=modality.latent.dtype,
+            yarn_config=self.yarn_config,
         )
         return TransformerArgs(
             x=x,
@@ -165,6 +171,7 @@ class MultiModalTransformerArgsPreprocessor:
         positional_embedding_theta: float,
         rope_type: LTXRopeType,
         av_ca_timestep_scale_multiplier: int,
+        yarn_config: YARNConfig | None = None,
     ) -> None:
         self.simple_preprocessor = TransformerArgsPreprocessor(
             patchify_proj=patchify_proj,
@@ -178,6 +185,7 @@ class MultiModalTransformerArgsPreprocessor:
             double_precision_rope=double_precision_rope,
             positional_embedding_theta=positional_embedding_theta,
             rope_type=rope_type,
+            yarn_config=yarn_config,
         )
         self.cross_scale_shift_adaln = cross_scale_shift_adaln
         self.cross_gate_adaln = cross_gate_adaln

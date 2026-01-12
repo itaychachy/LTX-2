@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, field, replace
-from typing import Generic
+from typing import Generic, Any
 
 import torch
 
@@ -35,6 +35,7 @@ class SingleGPUModelBuilder(Generic[ModelType], ModelBuilderProtocol[ModelType],
     loras: tuple[LoraPathStrengthAndSDOps, ...] = field(default_factory=tuple)
     model_loader: StateDictLoader = field(default_factory=SafetensorsModelStateDictLoader)
     registry: Registry = field(default_factory=DummyRegistry)
+    config_overrides: dict[str, Any] = field(default_factory=dict)
 
     def lora(self, lora_path: str, strength: float = 1.0, sd_ops: SDOps | None = None) -> "SingleGPUModelBuilder":
         return replace(self, loras=(*self.loras, LoraPathStrengthAndSDOps(lora_path, strength, sd_ops)))
@@ -71,7 +72,7 @@ class SingleGPUModelBuilder(Generic[ModelType], ModelBuilderProtocol[ModelType],
 
     def build(self, device: torch.device | None = None, dtype: torch.dtype | None = None) -> ModelType:
         device = torch.device("cuda") if device is None else device
-        config = self.model_config()
+        config = {**self.model_config(), **self.config_overrides}
         meta_model = self.meta_model(config, self.module_ops)
         model_paths = self.model_path if isinstance(self.model_path, tuple) else [self.model_path]
         model_state_dict = self.load_sd(model_paths, sd_ops=self.model_sd_ops, registry=self.registry, device=device)

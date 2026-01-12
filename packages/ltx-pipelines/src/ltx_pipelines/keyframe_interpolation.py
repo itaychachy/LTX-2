@@ -67,7 +67,7 @@ class KeyframeInterpolationPipeline:
             loras=loras,
             fp8transformer=fp8transformer,
         )
-        self.stage_2_model_ledger = self.stage_1_model_ledger.with_loras(
+        self.stage_2_model_ledger = self.stage_1_model_ledger.add(
             loras=distilled_lora,
         )
         self.pipeline_components = PipelineComponents(
